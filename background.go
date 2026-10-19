@@ -17,6 +17,7 @@ import (
 	"math"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/WindowsSov8forUs/sonolus-core-go/codec"
@@ -50,8 +51,10 @@ type Source struct {
 	// CacheDir caches downloads (Bestdori files under <CacheDir>/bestdori);
 	// empty disables the disk cache.
 	CacheDir string
-	// Region is the Bestdori server region ("" = jp).
-	Region string
+	// Regions is the Bestdori server priority order (nil:
+	// jp, en, tw, cn, kr). Each bundle comes from the first server that has
+	// it, so server-exclusive assets are found too.
+	Regions []string
 	// Offline fails every download that is not already cached.
 	Offline bool
 	// HTTPClient is used for downloads (nil: a client with a 90 s timeout).
@@ -66,9 +69,7 @@ func (s Source) bestdori(ctx context.Context) *bestdori.Client {
 		cache = filepath.Join(s.CacheDir, "bestdori")
 	}
 	b := bestdori.New(cache)
-	if s.Region != "" {
-		b.Region = s.Region
-	}
+	b.Regions = s.Regions
 	if s.HTTPClient != nil {
 		b.HTTP = s.HTTPClient
 	}
@@ -76,14 +77,19 @@ func (s Source) bestdori(ctx context.Context) *bestdori.Client {
 	return b
 }
 
-// DefaultBackgrounds are the bundles built when Options.Backgrounds is
-// empty. habahiro is the background the original forces for #HABAHIRO lives.
-var DefaultBackgrounds = []string{"skin00", "habahiro"}
+// DefaultBackgrounds are the ordinary backgrounds built when
+// Options.Backgrounds is empty.
+var DefaultBackgrounds = []string{"skin00"}
+
+// HabahiroBackground is the background the original forces for #HABAHIRO
+// lives (MV and practice aside); it is always built.
+const HabahiroBackground = "habahiro"
 
 // Options selects what to build. The zero value builds the default pack.
 type Options struct {
-	// Backgrounds are background bundles ingameskin/bgskin/<id> (nil:
-	// DefaultBackgrounds).
+	// Backgrounds are the ordinary background bundles
+	// ingameskin/bgskin/<id> (nil: DefaultBackgrounds). HabahiroBackground is
+	// built in addition.
 	Backgrounds []string
 	// NoFever skips the liveBG_fever variants.
 	NoFever bool
@@ -103,7 +109,10 @@ type Result struct {
 	// Item is the database item; its resource fields (Thumbnail, Data,
 	// Image, Configuration) are left empty for the caller to fill, e.g. with
 	// the server's repository URLs of Files().
-	Item          database.DatabaseBackgroundItem
+	Item database.DatabaseBackgroundItem
+	// Habahiro marks the items of #HABAHIRO levels, which the server forces
+	// for them as the original does.
+	Habahiro      bool
 	Data          resource.BackgroundData
 	Configuration resource.BackgroundConfiguration
 	Image         []byte // PNG
@@ -154,12 +163,19 @@ func WriteSource(root string, results ...*Result) error {
 	return nil
 }
 
-// Generate builds one item per background bundle and variant: names are
+// Generate builds one item per background bundle and variant, the ordinary
+// backgrounds first and HabahiroBackground last: names are
 // notgarupa-<bg>-normal and notgarupa-<bg>-fever.
 func Generate(ctx context.Context, o Options) ([]*Result, error) {
-	backgrounds := o.Backgrounds
-	if len(backgrounds) == 0 {
-		backgrounds = DefaultBackgrounds
+	ordinary := o.Backgrounds
+	if len(ordinary) == 0 {
+		ordinary = DefaultBackgrounds
+	}
+	var backgrounds []string
+	for _, id := range append(slices.Clone(ordinary), HabahiroBackground) {
+		if id = strings.TrimSpace(id); id != "" && !slices.Contains(backgrounds, id) {
+			backgrounds = append(backgrounds, id)
+		}
 	}
 	heightUnits := o.Height
 	if heightUnits <= 0 {
@@ -174,7 +190,6 @@ func Generate(ctx context.Context, o Options) ([]*Result, error) {
 
 	var results []*Result
 	for _, id := range backgrounds {
-		id = strings.TrimSpace(id)
 		bundle := "ingameskin/bgskin/" + id
 		files, err := bd.Manifest(bundle)
 		if err != nil {
@@ -238,6 +253,7 @@ func Generate(ctx context.Context, o Options) ([]*Result, error) {
 				Configuration: resource.BackgroundConfiguration{Scope: "notgarupa", Blur: 0, Mask: "#00000000"},
 				Image:         png,
 				Thumbnail:     thumb,
+				Habahiro:      id == HabahiroBackground,
 				Bundle:        bundle, File: file, Variant: v,
 				PxPerUnit: scale,
 			})

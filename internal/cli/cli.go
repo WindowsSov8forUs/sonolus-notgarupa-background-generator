@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/WindowsSov8forUs/sonolus-notgarupa-background-generator/internal/bestdori"
 	"github.com/WindowsSov8forUs/sonolus-pack-go/packer"
@@ -17,7 +18,7 @@ type Common struct {
 	Out     string
 	Pack    string
 	Cache   string
-	Region  string
+	Regions []string
 	Offline bool
 	Verbose bool
 	Version bool
@@ -28,7 +29,15 @@ func (c *Common) Register(fs *flag.FlagSet) {
 	fs.StringVar(&c.Out, "out", "out/source", "sonolus-pack source directory to (re)create")
 	fs.StringVar(&c.Pack, "pack", "out/pack", "run sonolus-pack-go into this directory (empty: skip)")
 	fs.StringVar(&c.Cache, "cache", ".cache", "download cache directory")
-	fs.StringVar(&c.Region, "region", bestdori.DefaultRegion, "Bestdori server region (jp, en, tw, cn, kr)")
+	fs.Func("regions", "Bestdori server priority order, comma-separated; each bundle comes from the first server that has it (default "+strings.Join(bestdori.DefaultRegions, ",")+")", func(v string) error {
+		c.Regions = nil
+		for _, r := range strings.Split(v, ",") {
+			if r = strings.TrimSpace(r); r != "" {
+				c.Regions = append(c.Regions, r)
+			}
+		}
+		return nil
+	})
 	fs.BoolVar(&c.Offline, "offline", false, "only use cached downloads")
 	fs.BoolVar(&c.Verbose, "v", false, "log downloads")
 	fs.BoolVar(&c.Version, "version", false, "print the version and exit")

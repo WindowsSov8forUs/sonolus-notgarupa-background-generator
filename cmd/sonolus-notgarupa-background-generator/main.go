@@ -21,7 +21,7 @@ func main() {
 	fs := flag.NewFlagSet("sonolus-notgarupa-background-generator", flag.ExitOnError)
 	common.Register(fs)
 	var o background.Options
-	skins := fs.String("bg", strings.Join(background.DefaultBackgrounds, ","), "comma-separated background bundles (ingameskin/bgskin/<id>); habahiro is the background the original forces for #HABAHIRO lives")
+	skins := fs.String("bg", strings.Join(background.DefaultBackgrounds, ","), "comma-separated ordinary background bundles (ingameskin/bgskin/<id>); the #HABAHIRO background ("+background.HabahiroBackground+") is always built")
 	fever := fs.Bool("fever", true, "also emit the liveBG_fever variant when the bundle has one")
 	dark := fs.Bool("dark-cover", true, "bake the DarkCover subtraction")
 	fs.Float64Var(&o.PxPerUnit, "px-per-unit", 0, "output pixels per UI unit (default: native texture density)")
@@ -33,7 +33,7 @@ func main() {
 	}
 	o.Backgrounds = strings.Split(*skins, ",")
 	o.NoFever, o.NoDarkCover = !*fever, !*dark
-	o.Source = background.Source{CacheDir: common.Cache, Region: common.Region, Offline: common.Offline, Log: common.Logf()}
+	o.Source = background.Source{CacheDir: common.Cache, Regions: common.Regions, Offline: common.Offline, Log: common.Logf()}
 
 	results, err := background.Generate(context.Background(), o)
 	if err != nil {
