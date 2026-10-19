@@ -1,13 +1,15 @@
-// Package background builds the NotGarupa background pack: the live
-// background texture laid out as the original Standard-live stage shows it
-// during play (bgImage widget 1920×1440 UI units centred at y = −170 under a
-// stage root scaled 0.92), with the DarkCover reverse-subtraction baked in.
-// Stage lights, speakers and psyllium are animated and therefore drawn by the
-// engine from the skin pack.
+// Package background builds the NotGarupa background items: every live
+// background of the original game's master data (event backgrounds, the
+// Collaboration / Limited backgrounds and the HABAHIRO background), laid out
+// as the Standard live stage shows it during play (bgImage widget 1920×1440
+// UI units centred at y = −170 under a stage root scaled 0.92), with the
+// special backgrounds' stage effects in their play state and the DarkCover
+// reverse-subtraction baked in. Stage lights, speakers and psyllium are
+// animated and therefore drawn by the engine from the skin pack.
 //
-// Generate returns the background items in memory (for embedding in a
-// server); WriteSource writes them as a sonolus-pack source tree. The command
-// in cmd/sonolus-notgarupa-background-generator wraps both.
+// Generate returns the items in memory one by one (for embedding in a
+// server); CreateSourceTree writes them as a sonolus-pack source tree. The
+// command in cmd/sonolus-notgarupa-background-generator wraps both.
 package background
 
 import (
@@ -17,15 +19,19 @@ import (
 	"math"
 	"net/http"
 	"path/filepath"
-	"slices"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/WindowsSov8forUs/sonolus-core-go/codec"
 	"github.com/WindowsSov8forUs/sonolus-core-go/core/resource"
 	"github.com/WindowsSov8forUs/sonolus-core-go/database"
 	"github.com/WindowsSov8forUs/sonolus-notgarupa-background-generator/internal/bestdori"
+	"github.com/WindowsSov8forUs/sonolus-notgarupa-background-generator/internal/cdn"
 	"github.com/WindowsSov8forUs/sonolus-notgarupa-background-generator/internal/imgutil"
+	"github.com/WindowsSov8forUs/sonolus-notgarupa-background-generator/internal/master"
 	"github.com/WindowsSov8forUs/sonolus-notgarupa-background-generator/internal/packout"
+	"github.com/WindowsSov8forUs/sonolus-notgarupa-background-generator/internal/unity"
 
 	xdraw "golang.org/x/image/draw"
 )
@@ -46,18 +52,29 @@ const (
 	darkCoverColor                     = 0.25
 )
 
-// Source configures where downloadable assets come from.
+// Output constants: the canvas is canvasHeight UI units high (symmetric
+// around the screen centre; covers the whole widget) at the background
+// texture's native density.
+const canvasHeight = 1640.0
+
+// PinnedAssetVersion is the content CDN asset version the generator was
+// verified against.
+const PinnedAssetVersion = cdn.PinnedVersion
+
+// Source configures where downloadable assets come from: the background
+// textures from Bestdori, the stage-effect prefabs from the official CDN.
 type Source struct {
-	// CacheDir caches downloads (Bestdori files under <CacheDir>/bestdori);
+	// CacheDir caches downloads (<CacheDir>/bestdori, <CacheDir>/cdn);
 	// empty disables the disk cache.
 	CacheDir string
-	// Regions is the Bestdori server priority order (nil:
-	// jp, en, tw, cn, kr). Each bundle comes from the first server that has
-	// it, so server-exclusive assets are found too.
+	// Regions is the Bestdori server priority order (nil: jp, en, tw, cn,
+	// kr). Each bundle comes from the first server that has it.
 	Regions []string
+	// AssetVersion is the content CDN asset version ("" = PinnedAssetVersion).
+	AssetVersion string
 	// Offline fails every download that is not already cached.
 	Offline bool
-	// HTTPClient is used for downloads (nil: a client with a 90 s timeout).
+	// HTTPClient is used for downloads (nil: the clients' defaults).
 	HTTPClient *http.Client
 	// Log receives one line per download (nil: silent).
 	Log func(format string, args ...any)
@@ -77,31 +94,15 @@ func (s Source) bestdori(ctx context.Context) *bestdori.Client {
 	return b
 }
 
-// DefaultBackgrounds are the ordinary backgrounds built when
-// Options.Backgrounds is empty.
-var DefaultBackgrounds = []string{"skin00"}
+func (s Source) cdn(ctx context.Context) *cdn.Client {
+	return &cdn.Client{Version: s.AssetVersion, CacheDir: s.CacheDir, Offline: s.Offline, HTTP: s.HTTPClient, Log: s.Log, Ctx: ctx}
+}
 
-// HabahiroBackground is the background the original forces for #HABAHIRO
-// lives (MV and practice aside); it is always built.
-const HabahiroBackground = "habahiro"
-
-// Options selects what to build. The zero value builds the default pack.
+// Options configures a run; the zero value builds everything.
 type Options struct {
-	// Backgrounds are the ordinary background bundles
-	// ingameskin/bgskin/<id> (nil: DefaultBackgrounds). HabahiroBackground is
-	// built in addition.
-	Backgrounds []string
-	// NoFever skips the liveBG_fever variants.
-	NoFever bool
-	// NoDarkCover skips baking the DarkCover subtraction.
-	NoDarkCover bool
-	// PxPerUnit is the output density in pixels per UI unit (0: the
-	// texture's native density).
-	PxPerUnit float64
-	// Height is the canvas height in UI units, symmetric around the screen
-	// centre (0: 1640, which covers the whole widget).
-	Height float64
 	Source Source
+	// Workers is the number of backgrounds built in parallel (0: the CPU count).
+	Workers int
 }
 
 // Result is one generated background item.
@@ -119,6 +120,8 @@ type Result struct {
 	Thumbnail     []byte // PNG
 	// Bundle, File and Variant ("normal" or "fever") name the source texture.
 	Bundle, File, Variant string
+	// StageEffect lists the stage-effect widgets visible in the image.
+	StageEffect []string
 	// PxPerUnit is the image density in pixels per UI unit.
 	PxPerUnit float64
 }
@@ -137,129 +140,241 @@ func (r *Result) Files() (map[string][]byte, error) {
 	return map[string][]byte{"thumbnail": r.Thumbnail, "data": data, "configuration": conf, "image": r.Image}, nil
 }
 
-// WriteSource (re)creates root as a sonolus-pack source tree holding the
-// given background items.
-func WriteSource(root string, results ...*Result) error {
+// SourceTree is a sonolus-pack source tree being written.
+type SourceTree struct{ src *packout.Source }
+
+// CreateSourceTree (re)creates root as a sonolus-pack source tree for
+// background items.
+func CreateSourceTree(root string) (*SourceTree, error) {
 	src, err := packout.Init(root, packout.T("NotGarupa Backgrounds", "NotGarupa 背景", "NotGarupa 背景"))
+	if err != nil {
+		return nil, err
+	}
+	return &SourceTree{src}, nil
+}
+
+// Add writes one item.
+func (t *SourceTree) Add(r *Result) error {
+	rel, err := t.src.ItemDir("backgrounds", r.Item.Name, packout.Item{
+		Version: r.Item.Version, Title: r.Item.Title, Subtitle: r.Item.Subtitle, Author: r.Item.Author,
+		Tags: r.Item.Tags, Description: r.Item.Description,
+	})
 	if err != nil {
 		return err
 	}
-	for _, r := range results {
-		rel, err := src.ItemDir("backgrounds", r.Item.Name, packout.Item{
-			Version: r.Item.Version, Title: r.Item.Title, Subtitle: r.Item.Subtitle, Author: r.Item.Author,
-			Tags: r.Item.Tags, Description: r.Item.Description,
-		})
-		if err != nil {
-			return err
+	files, err := r.Files()
+	if err != nil {
+		return err
+	}
+	return t.src.WriteFiles(rel, files)
+}
+
+// noFever lists the background bundles without a liveBG_fever texture (the
+// challenge and versus event backgrounds); Generate checks it against the
+// bundles.
+var noFever = map[string]bool{"skin02": true, "skin03": true}
+
+type bgItem struct {
+	bg      master.Background
+	variant string
+}
+
+func (b bgItem) name() string {
+	return fmt.Sprintf("notgarupa-%s-%s", strings.ToLower(b.bg.Bundle), b.variant)
+}
+
+func plan() ([]bgItem, error) {
+	m, err := master.Load()
+	if err != nil {
+		return nil, err
+	}
+	var out []bgItem
+	for _, bg := range m.Backgrounds() {
+		out = append(out, bgItem{bg, "normal"})
+		if !noFever[bg.Bundle] {
+			out = append(out, bgItem{bg, "fever"})
 		}
-		files, err := r.Files()
-		if err != nil {
-			return err
+	}
+	return out, nil
+}
+
+// Items returns the names of every item Generate builds, in order. It needs
+// no network: which bundles have a fever texture is part of the generator
+// (and verified by Generate).
+func Items() ([]string, error) {
+	p, err := plan()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(p))
+	for i, it := range p {
+		out[i] = it.name()
+	}
+	return out, nil
+}
+
+// Generate builds every background item and hands them to emit in Items
+// order; emit is called from one goroutine at a time. It returns the first
+// error.
+func Generate(ctx context.Context, opts Options, emit func(*Result) error) error {
+	items, err := plan()
+	if err != nil {
+		return err
+	}
+	coverTex, err := darkCover()
+	if err != nil {
+		return err
+	}
+	bd := opts.Source.bestdori(ctx)
+	bundles := opts.Source.cdn(ctx)
+	// one job per bundle: both variants share the stage effect
+	type job struct {
+		bg    master.Background
+		items []bgItem
+		res   []*Result
+		err   error
+		done  chan struct{}
+	}
+	var jobs []*job
+	index := map[string]*job{}
+	for _, it := range items {
+		j, ok := index[it.bg.Bundle]
+		if !ok {
+			j = &job{bg: it.bg, done: make(chan struct{})}
+			index[it.bg.Bundle] = j
+			jobs = append(jobs, j)
 		}
-		if err := src.WriteFiles(rel, files); err != nil {
-			return err
+		j.items = append(j.items, it)
+	}
+	workers := opts.Workers
+	if workers <= 0 {
+		workers = runtime.NumCPU()
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	queue := make(chan *job)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range queue {
+				j.res, j.err = buildBundle(ctx, bd, bundles, coverTex, j.bg, j.items)
+				close(j.done)
+			}
+		}()
+	}
+	go func() {
+		defer close(queue)
+		for _, j := range jobs {
+			select {
+			case queue <- j:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	defer wg.Wait()
+	for _, j := range jobs {
+		select {
+		case <-j.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		if j.err != nil {
+			return fmt.Errorf("%s: %w", j.bg.Bundle, j.err)
+		}
+		for _, r := range j.res {
+			if err := emit(r); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-// Generate builds one item per background bundle and variant, the ordinary
-// backgrounds first and HabahiroBackground last: names are
-// notgarupa-<bg>-normal and notgarupa-<bg>-fever.
-func Generate(ctx context.Context, o Options) ([]*Result, error) {
-	ordinary := o.Backgrounds
-	if len(ordinary) == 0 {
-		ordinary = DefaultBackgrounds
-	}
-	var backgrounds []string
-	for _, id := range append(slices.Clone(ordinary), HabahiroBackground) {
-		if id = strings.TrimSpace(id); id != "" && !slices.Contains(backgrounds, id) {
-			backgrounds = append(backgrounds, id)
-		}
-	}
-	heightUnits := o.Height
-	if heightUnits <= 0 {
-		heightUnits = 1640
-	}
-	dark := !o.NoDarkCover
-	bd := o.Source.bestdori(ctx)
-	coverTex, err := darkCover()
+func buildBundle(ctx context.Context, bd *bestdori.Client, bundles *cdn.Client, coverTex *image.NRGBA, bg master.Background, items []bgItem) ([]*Result, error) {
+	bundle := "ingameskin/bgskin/" + bg.Bundle
+	files, err := bd.Manifest(bundle)
 	if err != nil {
 		return nil, err
 	}
-
-	var results []*Result
-	for _, id := range backgrounds {
-		bundle := "ingameskin/bgskin/" + id
-		files, err := bd.Manifest(bundle)
+	textures := map[string]string{}
+	for _, f := range files {
+		switch strings.ToLower(f) {
+		case "livebg_normal.png", "livebg.png":
+			textures["normal"] = f
+		case "livebg_fever.png":
+			textures["fever"] = f
+		}
+	}
+	if textures["normal"] == "" {
+		return nil, fmt.Errorf("%s: no liveBG_normal.png / liveBG.png in %v", bundle, files)
+	}
+	if (textures["fever"] == "") != noFever[bg.Bundle] {
+		return nil, fmt.Errorf("%s: fever texture presence differs from the generator's table", bundle)
+	}
+	raw, err := bundles.Bundle(bundle)
+	if err != nil {
+		return nil, err
+	}
+	unityFiles, err := unity.ReadBundle(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", bundle, err)
+	}
+	stage, err := stageEffect(unityFiles)
+	if err != nil {
+		return nil, fmt.Errorf("%s stage effect: %w", bundle, err)
+	}
+	var out []*Result
+	for _, it := range items {
+		file := textures[it.variant]
+		data, err := bd.File(bundle, file)
 		if err != nil {
 			return nil, err
 		}
-		variants := map[string]string{}
-		for _, f := range files {
-			switch strings.ToLower(f) {
-			case "livebg_normal.png", "livebg.png":
-				variants["normal"] = f
-			case "livebg_fever.png":
-				if !o.NoFever {
-					variants["fever"] = f
-				}
-			}
+		tex, err := imgutil.Decode(data)
+		if err != nil {
+			return nil, fmt.Errorf("%s/%s: %w", bundle, file, err)
 		}
-		if variants["normal"] == "" {
-			return nil, fmt.Errorf("%s: no liveBG_normal.png / liveBG.png in %v", bundle, files)
+		scale := float64(tex.Rect.Dx()) / (bgWidgetW * stageRootScale)
+		img, names := compose(tex, coverTex, stage, scale)
+		png, err := imgutil.EncodePNG(img)
+		if err != nil {
+			return nil, err
 		}
-		for _, v := range []string{"normal", "fever"} {
-			file, ok := variants[v]
-			if !ok {
-				continue
-			}
-			data, err := bd.File(bundle, file)
-			if err != nil {
-				return nil, err
-			}
-			tex, err := imgutil.Decode(data)
-			if err != nil {
-				return nil, fmt.Errorf("%s/%s: %w", bundle, file, err)
-			}
-			scale := o.PxPerUnit
-			if scale <= 0 {
-				scale = float64(tex.Rect.Dx()) / (bgWidgetW * stageRootScale)
-			}
-			img := compose(tex, coverTex, scale, heightUnits, dark)
-			png, err := imgutil.EncodePNG(img)
-			if err != nil {
-				return nil, err
-			}
-			w, h := img.Rect.Dx(), img.Rect.Dy()
-			thumb, err := imgutil.EncodePNG(imgutil.Scale(img, 256, int(math.Round(256*float64(h)/float64(w)))))
-			if err != nil {
-				return nil, err
-			}
-			name := fmt.Sprintf("notgarupa-%s-%s", strings.ToLower(id), v)
-			title := fmt.Sprintf("NotGarupa %s (%s)", id, v)
-			desc := fmt.Sprintf("%s/%s laid out as the Standard-live stage (scale %.2f, DarkCover %v). Canvas: %.1f × %.0f UI units around the screen centre (the engine places it).", bundle, file, stageRootScale, dark, canvasWidth, heightUnits)
-			results = append(results, &Result{
-				Item: database.DatabaseBackgroundItem{
-					Name:        name,
-					Version:     packout.BackgroundVersion,
-					Title:       packout.T(title, title, title),
-					Subtitle:    packout.T("BanG Dream! Girls Band Party! (original art)", "BanG Dream! 少女乐团派对！（原作素材）", "バンドリ！ ガールズバンドパーティ！（原作素材）"),
-					Author:      packout.T("sonolus-notgarupa-background-generator", "sonolus-notgarupa-background-generator", "sonolus-notgarupa-background-generator"),
-					Tags:        []database.DatabaseTag{},
-					Description: packout.T(desc, desc, desc),
-				},
-				Data:          resource.BackgroundData{AspectRatio: float64(w) / float64(h), Fit: "width", Color: "#000000"},
-				Configuration: resource.BackgroundConfiguration{Scope: "notgarupa", Blur: 0, Mask: "#00000000"},
-				Image:         png,
-				Thumbnail:     thumb,
-				Habahiro:      id == HabahiroBackground,
-				Bundle:        bundle, File: file, Variant: v,
-				PxPerUnit: scale,
-			})
+		w, h := img.Rect.Dx(), img.Rect.Dy()
+		thumb, err := imgutil.EncodePNG(imgutil.Scale(img, 256, int(math.Round(256*float64(h)/float64(w)))))
+		if err != nil {
+			return nil, err
 		}
+		id := bg.Bundle
+		title := fmt.Sprintf("NotGarupa %s (%s)", id, it.variant)
+		desc := fmt.Sprintf("%s/%s laid out as the Standard-live stage (scale %.2f, DarkCover %v). Canvas: %.1f × %.0f UI units around the screen centre (the engine places it).", bundle, file, stageRootScale, true, canvasWidth, canvasHeight)
+		if len(names) > 0 {
+			desc += fmt.Sprintf(" Stage effect in its play state: %s.", strings.Join(names, ", "))
+		}
+		out = append(out, &Result{
+			Item: database.DatabaseBackgroundItem{
+				Name:        it.name(),
+				Version:     packout.BackgroundVersion,
+				Title:       packout.T(title, title, title),
+				Subtitle:    packout.T("BanG Dream! Girls Band Party! (original art)", "BanG Dream! 少女乐团派对！（原作素材）", "バンドリ！ ガールズバンドパーティ！（原作素材）"),
+				Author:      packout.T("sonolus-notgarupa-background-generator", "sonolus-notgarupa-background-generator", "sonolus-notgarupa-background-generator"),
+				Tags:        []database.DatabaseTag{},
+				Description: packout.T(desc, desc, desc),
+			},
+			Habahiro:      bg.Habahiro,
+			Data:          resource.BackgroundData{AspectRatio: float64(w) / float64(h), Fit: "width", Color: "#000000"},
+			Configuration: resource.BackgroundConfiguration{Scope: "notgarupa", Blur: 0, Mask: "#00000000"},
+			Image:         png,
+			Thumbnail:     thumb,
+			Bundle:        bundle, File: file, Variant: it.variant,
+			StageEffect: names,
+			PxPerUnit:   scale,
+		})
 	}
-	return results, nil
+	return out, nil
 }
 
 // darkCover decodes the stage's DarkCover texture (built into the APK).
@@ -272,13 +387,13 @@ func darkCover() (*image.NRGBA, error) {
 }
 
 // compose renders the canvas: width canvasWidth UI units, height
-// `heightUnits`, both centred on the screen centre, at `scale` px per UI unit.
-func compose(tex, cover *image.NRGBA, scale, heightUnits float64, dark bool) *image.NRGBA {
+// canvasHeight, both centred on the screen centre, at scale px per UI unit.
+func compose(tex, cover *image.NRGBA, stage []stageDraw, scale float64) (*image.NRGBA, []string) {
 	w := int(math.Round(canvasWidth * scale))
-	h := int(math.Round(heightUnits * scale))
+	h := int(math.Round(canvasHeight * scale))
 	canvas := image.NewNRGBA(image.Rect(0, 0, w, h))
 	toPx := func(x, y float64) (float64, float64) { // UI (y up) → canvas px
-		return (x + canvasWidth/2) * scale, (heightUnits/2 - y) * scale
+		return (x + canvasWidth/2) * scale, (canvasHeight/2 - y) * scale
 	}
 	// bgImage: full UV stretched over the widget, under the 0.92 stage root.
 	bw, bh := bgWidgetW*stageRootScale, bgWidgetH*stageRootScale
@@ -298,8 +413,11 @@ func compose(tex, cover *image.NRGBA, scale, heightUnits float64, dark bool) *im
 			canvas.Pix[i] = 255
 		}
 	}
-	if !dark {
-		return canvas
+	// Stage-effect widgets (render queues 3100–3250) lie between the
+	// bgImage and DarkCover (queue 3490).
+	var visible []string
+	if len(stage) > 0 {
+		visible = drawStage(canvas, stage, toPx)
 	}
 	// DarkCover: dst_linear -= tex_linear × linear(0.25), clamped at 0. The
 	// cover is screen-fixed and fills every visible position at every Stage
@@ -324,5 +442,5 @@ func compose(tex, cover *image.NRGBA, scale, heightUnits float64, dark bool) *im
 			}
 		}
 	}
-	return canvas
+	return canvas, visible
 }

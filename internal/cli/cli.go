@@ -16,18 +16,17 @@ import (
 
 type Common struct {
 	Out     string
-	Pack    string
 	Cache   string
 	Regions []string
 	Offline bool
 	Verbose bool
 	Version bool
+	Workers int
 }
 
 // Register adds the shared flags to fs.
 func (c *Common) Register(fs *flag.FlagSet) {
-	fs.StringVar(&c.Out, "out", "out/source", "sonolus-pack source directory to (re)create")
-	fs.StringVar(&c.Pack, "pack", "out/pack", "run sonolus-pack-go into this directory (empty: skip)")
+	fs.StringVar(&c.Out, "out", "out", "output directory: <out>/source (sonolus-pack source tree, recreated) and <out>/pack (servable pack)")
 	fs.StringVar(&c.Cache, "cache", ".cache", "download cache directory")
 	fs.Func("regions", "Bestdori server priority order, comma-separated; each bundle comes from the first server that has it (default "+strings.Join(bestdori.DefaultRegions, ",")+")", func(v string) error {
 		c.Regions = nil
@@ -41,6 +40,7 @@ func (c *Common) Register(fs *flag.FlagSet) {
 	fs.BoolVar(&c.Offline, "offline", false, "only use cached downloads")
 	fs.BoolVar(&c.Verbose, "v", false, "log downloads")
 	fs.BoolVar(&c.Version, "version", false, "print the version and exit")
+	fs.IntVar(&c.Workers, "j", 0, "items built in parallel (0: the CPU count)")
 }
 
 // Logf returns the download logger (nil unless -v).
