@@ -48,7 +48,11 @@ func main() {
 	if err != nil {
 		cli.Fatal(err)
 	}
-	if err := cli.Pack(source, filepath.Join(common.Out, "pack")); err != nil {
+	order, err := background.Items()
+	if err != nil {
+		cli.Fatal(err)
+	}
+	if err := cli.Pack(source, filepath.Join(common.Out, "pack"), order); err != nil {
 		cli.Fatal(err)
 	}
 	fmt.Printf("%d backgrounds -> %s\n", count, common.Out)
