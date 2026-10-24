@@ -118,8 +118,8 @@ type Result struct {
 	Configuration resource.BackgroundConfiguration
 	Image         []byte // PNG
 	Thumbnail     []byte // PNG
-	// Bundle, File and Variant ("normal" or "fever") name the source texture.
-	Bundle, File, Variant string
+	// Bundle and File name the source texture.
+	Bundle, File string
 	// StageEffect lists the stage-effect widgets visible in the image.
 	StageEffect []string
 	// PxPerUnit is the image density in pixels per UI unit.
@@ -169,46 +169,31 @@ func (t *SourceTree) Add(r *Result) error {
 	return t.src.WriteFiles(rel, files)
 }
 
-// noFever lists the background bundles without a liveBG_fever texture (the
-// challenge and versus event backgrounds); Generate checks it against the
-// bundles.
-var noFever = map[string]bool{"skin02": true, "skin03": true}
-
-type bgItem struct {
-	bg      master.Background
-	variant string
+// itemName is the item of a background bundle. Only the normal texture is
+// generated: the original loads liveBG_fever only for the multi live modes
+// with Fever (README, "Fever 背景").
+func itemName(bg master.Background) string {
+	return "notgarupa-" + strings.ToLower(bg.Bundle)
 }
 
-func (b bgItem) name() string {
-	return fmt.Sprintf("notgarupa-%s-%s", strings.ToLower(b.bg.Bundle), b.variant)
-}
-
-func plan() ([]bgItem, error) {
+func plan() ([]master.Background, error) {
 	m, err := master.Load()
 	if err != nil {
 		return nil, err
 	}
-	var out []bgItem
-	for _, bg := range m.Backgrounds() {
-		out = append(out, bgItem{bg, "normal"})
-		if !noFever[bg.Bundle] {
-			out = append(out, bgItem{bg, "fever"})
-		}
-	}
-	return out, nil
+	return m.Backgrounds(), nil
 }
 
 // Items returns the names of every item Generate builds, in order. It needs
-// no network: which bundles have a fever texture is part of the generator
-// (and verified by Generate).
+// no network.
 func Items() ([]string, error) {
 	p, err := plan()
 	if err != nil {
 		return nil, err
 	}
 	out := make([]string, len(p))
-	for i, it := range p {
-		out[i] = it.name()
+	for i, bg := range p {
+		out[i] = itemName(bg)
 	}
 	return out, nil
 }
@@ -217,7 +202,7 @@ func Items() ([]string, error) {
 // order; emit is called from one goroutine at a time. It returns the first
 // error.
 func Generate(ctx context.Context, opts Options, emit func(*Result) error) error {
-	items, err := plan()
+	bgs, err := plan()
 	if err != nil {
 		return err
 	}
@@ -227,24 +212,15 @@ func Generate(ctx context.Context, opts Options, emit func(*Result) error) error
 	}
 	bd := opts.Source.bestdori(ctx)
 	bundles := opts.Source.cdn(ctx)
-	// one job per bundle: both variants share the stage effect
 	type job struct {
-		bg    master.Background
-		items []bgItem
-		res   []*Result
-		err   error
-		done  chan struct{}
+		bg   master.Background
+		res  *Result
+		err  error
+		done chan struct{}
 	}
-	var jobs []*job
-	index := map[string]*job{}
-	for _, it := range items {
-		j, ok := index[it.bg.Bundle]
-		if !ok {
-			j = &job{bg: it.bg, done: make(chan struct{})}
-			index[it.bg.Bundle] = j
-			jobs = append(jobs, j)
-		}
-		j.items = append(j.items, it)
+	jobs := make([]*job, len(bgs))
+	for i, bg := range bgs {
+		jobs[i] = &job{bg: bg, done: make(chan struct{})}
 	}
 	workers := opts.Workers
 	if workers <= 0 {
@@ -259,7 +235,7 @@ func Generate(ctx context.Context, opts Options, emit func(*Result) error) error
 		go func() {
 			defer wg.Done()
 			for j := range queue {
-				j.res, j.err = buildBundle(ctx, bd, bundles, coverTex, j.bg, j.items)
+				j.res, j.err = buildBundle(ctx, bd, bundles, coverTex, j.bg)
 				close(j.done)
 			}
 		}()
@@ -284,35 +260,28 @@ func Generate(ctx context.Context, opts Options, emit func(*Result) error) error
 		if j.err != nil {
 			return fmt.Errorf("%s: %w", j.bg.Bundle, j.err)
 		}
-		for _, r := range j.res {
-			if err := emit(r); err != nil {
-				return err
-			}
+		if err := emit(j.res); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func buildBundle(ctx context.Context, bd *bestdori.Client, bundles *cdn.Client, coverTex *image.NRGBA, bg master.Background, items []bgItem) ([]*Result, error) {
+func buildBundle(ctx context.Context, bd *bestdori.Client, bundles *cdn.Client, coverTex *image.NRGBA, bg master.Background) (*Result, error) {
 	bundle := "ingameskin/bgskin/" + bg.Bundle
 	files, err := bd.Manifest(bundle)
 	if err != nil {
 		return nil, err
 	}
-	textures := map[string]string{}
+	file := ""
 	for _, f := range files {
 		switch strings.ToLower(f) {
 		case "livebg_normal.png", "livebg.png":
-			textures["normal"] = f
-		case "livebg_fever.png":
-			textures["fever"] = f
+			file = f
 		}
 	}
-	if textures["normal"] == "" {
+	if file == "" {
 		return nil, fmt.Errorf("%s: no liveBG_normal.png / liveBG.png in %v", bundle, files)
-	}
-	if (textures["fever"] == "") != noFever[bg.Bundle] {
-		return nil, fmt.Errorf("%s: fever texture presence differs from the generator's table", bundle)
 	}
 	raw, err := bundles.Bundle(bundle)
 	if err != nil {
@@ -326,55 +295,50 @@ func buildBundle(ctx context.Context, bd *bestdori.Client, bundles *cdn.Client, 
 	if err != nil {
 		return nil, fmt.Errorf("%s stage effect: %w", bundle, err)
 	}
-	var out []*Result
-	for _, it := range items {
-		file := textures[it.variant]
-		data, err := bd.File(bundle, file)
-		if err != nil {
-			return nil, err
-		}
-		tex, err := imgutil.Decode(data)
-		if err != nil {
-			return nil, fmt.Errorf("%s/%s: %w", bundle, file, err)
-		}
-		scale := float64(tex.Rect.Dx()) / (bgWidgetW * stageRootScale)
-		img, names := compose(tex, coverTex, stage, scale)
-		png, err := imgutil.EncodePNG(img)
-		if err != nil {
-			return nil, err
-		}
-		w, h := img.Rect.Dx(), img.Rect.Dy()
-		thumb, err := imgutil.EncodePNG(imgutil.Scale(img, 256, int(math.Round(256*float64(h)/float64(w)))))
-		if err != nil {
-			return nil, err
-		}
-		id := bg.Bundle
-		title := fmt.Sprintf("NotGarupa %s (%s)", id, it.variant)
-		desc := fmt.Sprintf("%s/%s laid out as the Standard-live stage (scale %.2f, DarkCover %v). Canvas: %.1f × %.0f UI units around the screen centre (the engine places it).", bundle, file, stageRootScale, true, canvasWidth, canvasHeight)
-		if len(names) > 0 {
-			desc += fmt.Sprintf(" Stage effect in its play state: %s.", strings.Join(names, ", "))
-		}
-		out = append(out, &Result{
-			Item: database.DatabaseBackgroundItem{
-				Name:        it.name(),
-				Version:     packout.BackgroundVersion,
-				Title:       packout.T(title, title, title),
-				Subtitle:    packout.T("BanG Dream! Girls Band Party! (original art)", "BanG Dream! 少女乐团派对！（原作素材）", "バンドリ！ ガールズバンドパーティ！（原作素材）"),
-				Author:      packout.T("sonolus-notgarupa-background-generator", "sonolus-notgarupa-background-generator", "sonolus-notgarupa-background-generator"),
-				Tags:        []database.DatabaseTag{},
-				Description: packout.T(desc, desc, desc),
-			},
-			Habahiro:      bg.Habahiro,
-			Data:          resource.BackgroundData{AspectRatio: float64(w) / float64(h), Fit: "width", Color: "#000000"},
-			Configuration: resource.BackgroundConfiguration{Scope: "notgarupa", Blur: 0, Mask: "#00000000"},
-			Image:         png,
-			Thumbnail:     thumb,
-			Bundle:        bundle, File: file, Variant: it.variant,
-			StageEffect: names,
-			PxPerUnit:   scale,
-		})
+	data, err := bd.File(bundle, file)
+	if err != nil {
+		return nil, err
 	}
-	return out, nil
+	tex, err := imgutil.Decode(data)
+	if err != nil {
+		return nil, fmt.Errorf("%s/%s: %w", bundle, file, err)
+	}
+	scale := float64(tex.Rect.Dx()) / (bgWidgetW * stageRootScale)
+	img, names := compose(tex, coverTex, stage, scale)
+	png, err := imgutil.EncodePNG(img)
+	if err != nil {
+		return nil, err
+	}
+	w, h := img.Rect.Dx(), img.Rect.Dy()
+	thumb, err := imgutil.EncodePNG(imgutil.Scale(img, 256, int(math.Round(256*float64(h)/float64(w)))))
+	if err != nil {
+		return nil, err
+	}
+	id := bg.Bundle
+	title := "NotGarupa " + id
+	desc := fmt.Sprintf("%s/%s laid out as the Standard-live stage (scale %.2f, DarkCover %v). Canvas: %.1f × %.0f UI units around the screen centre (the engine places it).", bundle, file, stageRootScale, true, canvasWidth, canvasHeight)
+	if len(names) > 0 {
+		desc += fmt.Sprintf(" Stage effect in its play state: %s.", strings.Join(names, ", "))
+	}
+	return &Result{
+		Item: database.DatabaseBackgroundItem{
+			Name:        itemName(bg),
+			Version:     packout.BackgroundVersion,
+			Title:       packout.T(title, title, title),
+			Subtitle:    packout.T("BanG Dream! Girls Band Party! (original art)", "BanG Dream! 少女乐团派对！（原作素材）", "バンドリ！ ガールズバンドパーティ！（原作素材）"),
+			Author:      packout.T("sonolus-notgarupa-background-generator", "sonolus-notgarupa-background-generator", "sonolus-notgarupa-background-generator"),
+			Tags:        []database.DatabaseTag{},
+			Description: packout.T(desc, desc, desc),
+		},
+		Habahiro:      bg.Habahiro,
+		Data:          resource.BackgroundData{AspectRatio: float64(w) / float64(h), Fit: "width", Color: "#000000"},
+		Configuration: resource.BackgroundConfiguration{Scope: "notgarupa", Blur: 0, Mask: "#00000000"},
+		Image:         png,
+		Thumbnail:     thumb,
+		Bundle:        bundle, File: file,
+		StageEffect: names,
+		PxPerUnit:   scale,
+	}, nil
 }
 
 // darkCover decodes the stage's DarkCover texture (built into the APK).

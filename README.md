@@ -6,11 +6,11 @@
 
 ## 条目
 
-每个背景 bundle 生成 `notgarupa-<bundle>-normal`，原作有 fever 纹理时另生成 `notgarupa-<bundle>-fever`，共 44 个条目：
+每个背景 bundle 生成一个条目 `notgarupa-<bundle>`（普通背景 `liveBG_normal`；不生成 fever 背景，见「Fever 背景」），共 23 个条目：
 
 | 来源 | bundle |
 |---|---|
-| 活动背景（主数据 MasterSkinBackground） | `skin00`（含 fever）、`skin02`、`skin03`（这两个原作没有 fever 纹理） |
+| 活动背景（主数据 MasterSkinBackground） | `skin00`、`skin02`、`skin03` |
 | 特殊背景（Collaboration / Limited 的背景组件） | `skin_persona`、`skin_miku`、`skin_cafe`、`skin_maid`、`skin_gbp2020`、`skin_coin`、`skin_witch`、`skin_april2021`、`skin_stage`、`skin_delta`、`skin_5th`、`skin_bike`、`skin_satan`、`skin_april2019`、`skin_collabo23_summer_g`、`skin_collabo23_winter_d`、`skin_april_2024`、`skin_collabo24_autumn_i`、`skin_collabo25_autumn_s` |
 | HABAHIRO（原作对 `#HABAHIRO` live 强制使用，MV 与练习模式除外） | `habahiro`，`Result.Habahiro` 为 true |
 
@@ -21,7 +21,7 @@
 
 ## 合成
 
-- **底图**：`liveBG_normal.png` / `liveBG.png`（fever 为 `liveBG_fever.png`）取自 Bestdori，按 `-regions` 的服务器优先级取第一个拥有该 bundle 的服务器。拉伸到 bgImage 部件，画布宽 1766.4 UI 单位（0.92 下的整个部件，引擎在通关退场动画中按舞台 TRS 缩放、移动它）、高 1640 UI 单位，分辨率为纹理原生密度。
+- **底图**：`liveBG_normal.png` / `liveBG.png` 取自 Bestdori，按 `-regions` 的服务器优先级取第一个拥有该 bundle 的服务器。拉伸到 bgImage 部件，画布宽 1766.4 UI 单位（0.92 下的整个部件，引擎在通关退场动画中按舞台 TRS 缩放、移动它）、高 1640 UI 单位，分辨率为纹理原生密度。
 - **活动背景的分层纹理**：`skin02`、`skin03` 的 `liveBG_layer1/2` 只在挑战 Live 与对邦 Live 模式中使用（原作 BgManager 的对应模式初始化）；普通 live 只显示 `liveBG_normal`，所以不合成。
 - **舞台特效**：特殊背景 bundle 带有舞台特效 prefab（`stageEffect`，InGameStageBgEffector），原作把它放在舞台根上、与 bgImage 部件同一坐标系（顶边 y = 550）。程序从官方 CDN 的原始 UnityFS bundle 读取 prefab，渲染其演奏中的状态：
   - Animator 的 StartAnimation / ClearAnimation 只在开场与通关播放，所有状态都写默认值（Write Defaults），并回到空的 None 状态；它们通过事件触发的补间在同一段动画中反向播放。因此演奏中显示的是 prefab 的序列化状态。
@@ -48,6 +48,20 @@
 - 循环的精灵动画只能显示序列化的那一帧（演奏中没有可见的循环精灵动画）。
 - 宽高比 > 16:9 时原作会缩小舞台根并上移，静态背景无法随屏幕比例改变。
 
+## Fever 背景
+
+多数背景 bundle 带有 `liveBG_fever.png`，但单人 live 从不显示它，所以不生成：
+
+- `BgManager` 的初始化（`initCollaboSkin`、`initForMultiNormal` 等）把 `liveBG_normal` 设为背景，仅当 `InGameUtility.IsExistFeverMode()` 为真时才额外加载 `liveBG_fever`。该函数即 `InGameMode == MultiNormal(2) || InGameMode == MultiTeamLiveFestival(5)`（JP 10.1.4 `0x331C3D0`，10.2.0 `0x331B514`，ARM64 切片 `0331b514__InGameUtility__IsExistFeverMode.arm64.tsv`）。
+- `BgManager.ChangeBgTextureFever`（`0x387CCE4`）只在 fever 纹理已加载时把背景换成它，即协力 live 与团队 Live 祭典的 Fever 时间（`FeverTimeManager`，由队员的 Fever 点数与 BMS 的 Fever 指令驱动）。
+- NotGarupa 复刻单人 live（`SingleNormal(1)` 等），引擎不实现 Fever（Garupa JSON 不产生 Fever 指令），背景始终是 `liveBG_normal`。
+
+Sonolus 中能否在一局内切换背景（留作以后需要时参考）：
+
+- **不能换条目**：背景条目在关卡开始时确定（玩家选择或关卡 `useBackground`），整局不变。运行时只有 `RuntimeBackground`，即 `Background.Get()` / `Set(quad)`：背景图贴在屏幕上的四边形。引擎无法换条目、无法得知玩家选了哪个条目，也就无法用皮肤精灵画出与之对应的另一张图。
+- **同一条目内可以换画面**：一个背景条目只有一张 `image`，引擎不能选纹理或裁剪 UV，但 `Set(quad)` 每帧可写（引擎的开场舞台缩放就是这样做的）。若把两张底图上下拼进同一张 image，平时让 quad 显示其中一半，切换时移动 quad 显示另一半，并用皮肤中的纯色精灵盖住在高屏幕或舞台缩放时露出的另一半，即可在关卡内按条件切换。代价是图片体积与显存翻倍，且引擎之外显示整张背景图的地方会看到拼接图，`aspectRatio` / `fit` 也只能按拼接后的尺寸填写。
+- 照原作单人 live 没有切换条件，所以不采用；只有将来实现原作没有的单人 Fever 时才需要。
+
 ## 命令行
 
 从 GitHub Release 下载对应平台的压缩包（linux / windows / darwin，amd64 / arm64；由 `.github/workflows/build.yml` 矩阵编译，推送 `v*` 标签时发布），解压后直接运行；也可以用 Go 安装或在本仓库中运行（仓库为私有，需要 `GOPRIVATE=github.com/WindowsSov8forUs/*` 和可访问仓库的 git 凭据）：
@@ -61,7 +75,7 @@ go run ./cmd/sonolus-notgarupa-background-generator   # 在本仓库中
 sonolus-notgarupa-background-generator    # 全部条目 → out/source 与 out/pack
 ```
 
-程序内置所需的 APK 资源（DarkCover 贴图），其余素材联网下载到 `-cache`（默认当前目录的 `.cache/`）。全量生成约 70 秒，包约 81 MB。
+程序内置所需的 APK 资源（DarkCover 贴图），其余素材联网下载到 `-cache`（默认当前目录的 `.cache/`）。缓存就绪时全量生成约 20 秒，包约 39 MB。
 
 | 参数 | 默认值 | 作用 |
 |---|---|---|
@@ -97,8 +111,8 @@ err := background.Generate(ctx, background.Options{
 ```
 
 - `Options`：`Source`（`CacheDir`、`Regions`、`AssetVersion`、`Offline`、`HTTPClient`、`Log`）与 `Workers`（0 为 CPU 数）。`Generate` 的 `ctx` 可取消下载，多个生成器可以共用同一个 `CacheDir`（缓存写入是原子的）。
-- `Items()` 按生成顺序返回全部条目名。哪些背景有 fever 纹理写在生成器里，`Generate` 会与 bundle 内容核对，不一致时报错。
-- `Generate` 按 `Items()` 的顺序逐个把结果交给回调（同一时间只有一个回调在执行），返回第一个错误。每个 `Result`：`Item`（sonolus-core-go 的 `database.DatabaseBackgroundItem`，资源字段留空）、`Habahiro`、Data、Configuration、Image、Thumbnail（PNG）、来源 bundle / 文件 / 变体、可见的舞台特效部件 `StageEffect`。
+- `Items()` 按生成顺序返回全部条目名。
+- `Generate` 按 `Items()` 的顺序逐个把结果交给回调（同一时间只有一个回调在执行），返回第一个错误。每个 `Result`：`Item`（sonolus-core-go 的 `database.DatabaseBackgroundItem`，资源字段留空）、`Habahiro`、Data、Configuration、Image、Thumbnail（PNG）、来源 bundle / 文件、可见的舞台特效部件 `StageEffect`。
 - `Result.Files()` 按 item.json 的字段名返回资源字节："thumbnail"、"data"、"configuration"（均已 gzip 压缩）、"image"。
 - `background.CreateSourceTree(dir)` 与 `(*SourceTree).Add(r)` 把结果写成 sonolus-pack 源目录（命令行就是 `Generate` + `SourceTree` + sonolus-pack-go）。
 

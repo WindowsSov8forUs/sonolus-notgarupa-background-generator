@@ -27,12 +27,12 @@ func TestItems(t *testing.T) {
 		}
 		seen[n] = true
 	}
-	for _, want := range []string{"notgarupa-skin00-normal", "notgarupa-skin00-fever", "notgarupa-habahiro-normal", "notgarupa-habahiro-fever", "notgarupa-skin02-normal"} {
+	for _, want := range []string{"notgarupa-skin00", "notgarupa-habahiro", "notgarupa-skin02"} {
 		if !seen[want] {
 			t.Errorf("missing %s", want)
 		}
 	}
-	for _, unwanted := range []string{"notgarupa-skin02-fever", "notgarupa-skin01-normal", "notgarupa-skin_teamlivefestival-normal"} {
+	for _, unwanted := range []string{"notgarupa-skin01", "notgarupa-skin_teamlivefestival"} {
 		if seen[unwanted] {
 			t.Errorf("unexpected %s", unwanted)
 		}
