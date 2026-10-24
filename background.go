@@ -169,13 +169,6 @@ func (t *SourceTree) Add(r *Result) error {
 	return t.src.WriteFiles(rel, files)
 }
 
-// itemName is the item of a background bundle. Only the normal texture is
-// generated: the original loads liveBG_fever only for the multi live modes
-// with Fever (README, "Fever 背景").
-func itemName(bg master.Background) string {
-	return "notgarupa-" + strings.ToLower(bg.Bundle)
-}
-
 func plan() ([]master.Background, error) {
 	m, err := master.Load()
 	if err != nil {
@@ -185,7 +178,8 @@ func plan() ([]master.Background, error) {
 }
 
 // Items returns the names of every item Generate builds, in order. It needs
-// no network.
+// no network. Only the normal texture is generated: the original loads
+// liveBG_fever only for the multi live modes with Fever (README, "Fever 背景").
 func Items() ([]string, error) {
 	p, err := plan()
 	if err != nil {
@@ -193,7 +187,7 @@ func Items() ([]string, error) {
 	}
 	out := make([]string, len(p))
 	for i, bg := range p {
-		out[i] = itemName(bg)
+		out[i] = bg.Name()
 	}
 	return out, nil
 }
@@ -314,19 +308,18 @@ func buildBundle(ctx context.Context, bd *bestdori.Client, bundles *cdn.Client, 
 	if err != nil {
 		return nil, err
 	}
-	id := bg.Bundle
-	title := "NotGarupa " + id
+	title := bg.Title
 	desc := fmt.Sprintf("%s/%s laid out as the Standard-live stage (scale %.2f, DarkCover %v). Canvas: %.1f × %.0f UI units around the screen centre (the engine places it).", bundle, file, stageRootScale, true, canvasWidth, canvasHeight)
 	if len(names) > 0 {
 		desc += fmt.Sprintf(" Stage effect in its play state: %s.", strings.Join(names, ", "))
 	}
 	return &Result{
 		Item: database.DatabaseBackgroundItem{
-			Name:        itemName(bg),
+			Name:        bg.Name(),
 			Version:     packout.BackgroundVersion,
 			Title:       packout.T(title, title, title),
-			Subtitle:    packout.T("BanG Dream! Girls Band Party! (original art)", "BanG Dream! 少女乐团派对！（原作素材）", "バンドリ！ ガールズバンドパーティ！（原作素材）"),
-			Author:      packout.T("sonolus-notgarupa-background-generator", "sonolus-notgarupa-background-generator", "sonolus-notgarupa-background-generator"),
+			Subtitle:    packout.T("BanG Dream! Girls Band Party!", "BanG Dream! 少女乐团派对！", "バンドリ！ ガールズバンドパーティ！"),
+			Author:      packout.T("GirlsBandParty", "GirlsBandParty", "GirlsBandParty"),
 			Tags:        []database.DatabaseTag{},
 			Description: packout.T(desc, desc, desc),
 		},

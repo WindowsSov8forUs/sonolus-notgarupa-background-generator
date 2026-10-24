@@ -6,7 +6,7 @@
 
 ## 条目
 
-每个背景 bundle 生成一个条目 `notgarupa-<bundle>`（普通背景 `liveBG_normal`；不生成 fever 背景，见「Fever 背景」），共 23 个条目：
+每个背景 bundle 生成一个条目 `garupa-<bundle>`（普通背景 `liveBG_normal`；不生成 fever 背景，见「Fever 背景」），标题为原作名称（如「デフォルト背景」「ペルソナコラボ」「HABAHIRO」），共 23 个条目。名称来自原作主数据（`internal/master/skins.json` 的 `names`，取 JP、EN、TW、CN 中第一个有的名称）：普通设置用各行的皮肤名（`TYPE1`、`レーンスキン00`、`エフェクトスキン00`、`SEスキン00`、`デフォルト背景` 等），Collaboration 行用季节描述（`MasterSeasonSpecial.description`，如 `ペルソナコラボ`），Limited 行用限定皮肤名（如 `エイプリルフール2019`）；同一组件出现在多行时取 Limited 行，其次取季节最早的行。特殊行替换的各轴是一个固定组合，条目名只写一次（该组合的第一个 bundle），标题只写一次（该行的名称）。条目的作者为 `GirlsBandParty`，副标题为游戏名。
 
 | 来源 | bundle |
 |---|---|
