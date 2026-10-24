@@ -146,7 +146,7 @@ type SourceTree struct{ src *packout.Source }
 // CreateSourceTree (re)creates root as a sonolus-pack source tree for
 // background items.
 func CreateSourceTree(root string) (*SourceTree, error) {
-	src, err := packout.Init(root, packout.T("NotGarupa Backgrounds", "NotGarupa 背景", "NotGarupa 背景"))
+	src, err := packout.Init(root, packout.T("NotGarupa Backgrounds", "NotGarupa 背景", "NotGarupa 背景", "NotGarupa 背景"))
 	if err != nil {
 		return nil, err
 	}
@@ -317,11 +317,11 @@ func buildBundle(ctx context.Context, bd *bestdori.Client, bundles *cdn.Client, 
 		Item: database.DatabaseBackgroundItem{
 			Name:        bg.Name(),
 			Version:     packout.BackgroundVersion,
-			Title:       packout.T(title, title, title),
-			Subtitle:    packout.T("BanG Dream! Girls Band Party!", "BanG Dream! 少女乐团派对！", "バンドリ！ ガールズバンドパーティ！"),
-			Author:      packout.T("GirlsBandParty", "GirlsBandParty", "GirlsBandParty"),
+			Title:       packout.L(title),
+			Subtitle:    packout.T("BanG Dream! Girls Band Party!", "BanG Dream! 少女乐团派对！", "BanG Dream! 少女樂團派對！", "バンドリ！ ガールズバンドパーティ！"),
+			Author:      packout.T("GirlsBandParty", "GirlsBandParty", "GirlsBandParty", "GirlsBandParty"),
 			Tags:        []database.DatabaseTag{},
-			Description: packout.T(desc, desc, desc),
+			Description: packout.T(desc, desc, desc, desc),
 		},
 		Habahiro:      bg.Habahiro,
 		Data:          resource.BackgroundData{AspectRatio: float64(w) / float64(h), Fit: "width", Color: "#000000"},
