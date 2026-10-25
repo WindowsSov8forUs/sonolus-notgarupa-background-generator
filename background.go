@@ -52,10 +52,16 @@ const (
 	darkCoverColor                     = 0.25
 )
 
-// Output constants: the canvas is canvasHeight UI units high (symmetric
-// around the screen centre; covers the whole widget) at the background
-// texture's native density.
-const canvasHeight = 1640.0
+// Output constants: the canvas is composed canvasHeight UI units high
+// (symmetric around the screen centre) at the background texture's native
+// density, then cut at canvasTop, the bgImage widget's top edge: above it the
+// canvas is only the opaque black where the widget does not reach, which the
+// background colour (#000000) shows instead. Sonolus places a background
+// itself where the engine cannot (Preview), and it would show that band.
+const (
+	canvasHeight = 1640.0
+	canvasTop    = bgWidgetY*stageRootScale + bgWidgetH*stageRootScale/2 // 506
+)
 
 // PinnedAssetVersion is the content CDN asset version the generator was
 // verified against.
@@ -299,6 +305,9 @@ func buildBundle(ctx context.Context, bd *bestdori.Client, bundles *cdn.Client, 
 	}
 	scale := float64(tex.Rect.Dx()) / (bgWidgetW * stageRootScale)
 	img, names := compose(tex, coverTex, stage, scale)
+	if img, err = cutTop(img, scale); err != nil {
+		return nil, fmt.Errorf("%s/%s: %w", bundle, file, err)
+	}
 	png, err := imgutil.EncodePNG(img)
 	if err != nil {
 		return nil, err
@@ -309,7 +318,7 @@ func buildBundle(ctx context.Context, bd *bestdori.Client, bundles *cdn.Client, 
 		return nil, err
 	}
 	title := bg.Title
-	desc := fmt.Sprintf("%s/%s laid out as the Standard-live stage (scale %.2f, DarkCover %v). Canvas: %.1f × %.0f UI units around the screen centre (the engine places it).", bundle, file, stageRootScale, true, canvasWidth, canvasHeight)
+	desc := fmt.Sprintf("%s/%s laid out as the Standard-live stage (scale %.2f, DarkCover %v). Canvas: %.1f UI units wide around the screen centre, from y %.0f to %.0f (the engine places it).", bundle, file, stageRootScale, true, canvasWidth, canvasTop, -canvasHeight/2)
 	if len(names) > 0 {
 		desc += fmt.Sprintf(" Stage effect in its play state: %s.", strings.Join(names, ", "))
 	}
@@ -324,7 +333,7 @@ func buildBundle(ctx context.Context, bd *bestdori.Client, bundles *cdn.Client, 
 			Description: packout.T(desc, desc, desc, desc),
 		},
 		Habahiro:      bg.Habahiro,
-		Data:          resource.BackgroundData{AspectRatio: float64(w) / float64(h), Fit: "width", Color: "#000000"},
+		Data:          resource.BackgroundData{AspectRatio: float64(w) / float64(h), Fit: "cover", Color: "#000000"},
 		Configuration: resource.BackgroundConfiguration{Scope: "notgarupa", Blur: 0, Mask: "#00000000"},
 		Image:         png,
 		Thumbnail:     thumb,
@@ -341,6 +350,19 @@ func darkCover() (*image.NRGBA, error) {
 		return nil, err
 	}
 	return imgutil.Decode(data)
+}
+
+// cutTop removes the canvas above canvasTop, which must be opaque black.
+func cutTop(img *image.NRGBA, scale float64) (*image.NRGBA, error) {
+	rows := int(math.Round((canvasHeight/2 - canvasTop) * scale))
+	for y := 0; y < rows; y++ {
+		for x := 0; x < img.Rect.Dx(); x++ {
+			if p := img.Pix[img.PixOffset(x, y):]; p[0]|p[1]|p[2] != 0 || p[3] != 255 {
+				return nil, fmt.Errorf("canvas above the bgImage widget is not black at (%d, %d)", x, y)
+			}
+		}
+	}
+	return imgutil.Crop(img, 0, rows, img.Rect.Dx(), img.Rect.Dy()-rows)
 }
 
 // compose renders the canvas: width canvasWidth UI units, height

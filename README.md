@@ -21,7 +21,7 @@
 
 ## 合成
 
-- **底图**：`liveBG_normal.png` / `liveBG.png` 取自 Bestdori，按 `-regions` 的服务器优先级取第一个拥有该 bundle 的服务器。拉伸到 bgImage 部件，画布宽 1766.4 UI 单位（0.92 下的整个部件，引擎在通关退场动画中按舞台 TRS 缩放、移动它）、高 1640 UI 单位，分辨率为纹理原生密度。
+- **底图**：`liveBG_normal.png` / `liveBG.png` 取自 Bestdori，按 `-regions` 的服务器优先级取第一个拥有该 bundle 的服务器。拉伸到 bgImage 部件，画布宽 1766.4 UI 单位（0.92 下的整个部件，引擎在通关退场动画中按舞台 TRS 缩放、移动它）、纵向从部件顶边 y = 506 到 y = −820（部件之上原本只是部件够不着的纯黑，生成时校验后裁掉，由背景色 `#000000` 代替；Preview 中 Sonolus 自己铺背景，否则在比 16:9 方的屏幕上会露出这段黑边），分辨率为纹理原生密度。`fit` 为 `cover`。
 - **活动背景的分层纹理**：`skin02`、`skin03` 的 `liveBG_layer1/2` 只在挑战 Live 与对邦 Live 模式中使用（原作 BgManager 的对应模式初始化）；普通 live 只显示 `liveBG_normal`，所以不合成。
 - **舞台特效**：特殊背景 bundle 带有舞台特效 prefab（`stageEffect`，InGameStageBgEffector），原作把它放在舞台根上、与 bgImage 部件同一坐标系（顶边 y = 550）。程序从官方 CDN 的原始 UnityFS bundle 读取 prefab，渲染其演奏中的状态：
   - Animator 的 StartAnimation / ClearAnimation 只在开场与通关播放，所有状态都写默认值（Write Defaults），并回到空的 None 状态；它们通过事件触发的补间在同一段动画中反向播放。因此演奏中显示的是 prefab 的序列化状态。
