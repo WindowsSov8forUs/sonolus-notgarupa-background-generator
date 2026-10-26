@@ -64,7 +64,7 @@ Sonolus 中能否在一局内切换背景（留作以后需要时参考）：
 
 ## 命令行
 
-从 GitHub Release 下载对应平台的压缩包（linux / windows / darwin，amd64 / arm64；由 `.github/workflows/build.yml` 矩阵编译，推送 `v*` 标签时发布），解压后直接运行；也可以用 Go 安装或在本仓库中运行（仓库为私有，需要 `GOPRIVATE=github.com/WindowsSov8forUs/*` 和可访问仓库的 git 凭据）：
+从 GitHub Release 下载对应平台的压缩包（linux / windows / darwin，amd64 / arm64；由 `.github/workflows/build.yml` 矩阵编译，推送 `v*` 标签时发布），解压后直接运行；也可以用 Go 安装或在本仓库中运行：
 
 ```sh
 go install github.com/WindowsSov8forUs/sonolus-notgarupa-background-generator/cmd/sonolus-notgarupa-background-generator@latest
