@@ -27,7 +27,7 @@ func TestItems(t *testing.T) {
 		}
 		seen[n] = true
 	}
-	for _, want := range []string{"garupa-skin00", "garupa-habahiro", "garupa-skin02"} {
+	for _, want := range []string{"garupa-skin00", "garupa-habahiro", "garupa-skin02", "garupa-skin_collabo_2026", "garupa-skin_bilicat", "garupa-skin_bilicat01", "garupa-skin10001"} {
 		if !seen[want] {
 			t.Errorf("missing %s", want)
 		}

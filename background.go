@@ -76,7 +76,8 @@ type Source struct {
 	// Regions is the Bestdori server priority order (nil: jp, en, tw, cn,
 	// kr). Each bundle comes from the first server that has it.
 	Regions []string
-	// AssetVersion is the content CDN asset version ("" = PinnedAssetVersion).
+	// AssetVersion is the JP content CDN asset version ("" =
+	// PinnedAssetVersion); mainland bundles use cdn.PinnedCNVersion.
 	AssetVersion string
 	// Offline fails every download that is not already cached.
 	Offline bool
@@ -97,11 +98,22 @@ func (s Source) bestdori(ctx context.Context) *bestdori.Client {
 		b.HTTP = s.HTTPClient
 	}
 	b.Offline, b.Log, b.Ctx = s.Offline, s.Log, ctx
+	b.Servers = bundleServers()
 	return b
 }
 
+// bundleServers is the server of each bundle of a master row from another
+// server (nil if the master does not load; Generate reports that error).
+func bundleServers() map[string]string {
+	m, err := master.Load()
+	if err != nil {
+		return nil
+	}
+	return m.BundleServers()
+}
+
 func (s Source) cdn(ctx context.Context) *cdn.Client {
-	return &cdn.Client{Version: s.AssetVersion, CacheDir: s.CacheDir, Offline: s.Offline, HTTP: s.HTTPClient, Log: s.Log, Ctx: ctx}
+	return &cdn.Client{Version: s.AssetVersion, Servers: bundleServers(), CacheDir: s.CacheDir, Offline: s.Offline, HTTP: s.HTTPClient, Log: s.Log, Ctx: ctx}
 }
 
 // Options configures a run; the zero value builds everything.

@@ -1,17 +1,17 @@
 # sonolus-notgarupa-background-generator
 
-生成 NotGarupa 背景包：原作主数据（JP 10.1.4）中的每一个 live 背景——活动背景、Collaboration / Limited 特殊背景与 HABAHIRO 背景——按演奏中的舞台布局合成（bgImage 部件 1920×1440 UI 单位、中心 y = −170、舞台根缩放 0.92），特殊背景的舞台特效按演奏中的状态合成，并烘焙 DarkCover 的反向减法变暗。舞台灯光、音箱、荧光棒是动画，由引擎用皮肤包绘制。
+生成 NotGarupa 背景包：原作的皮肤主数据（JP 主数据的各行与 Limited 1–5，以及只存在于大陆服主数据的 Collaboration 100001、Limited 10001 / 10002；后者带 `"server": "cn"`，资源取自大陆服）中的每一个 live 背景——活动背景、Collaboration / Limited 特殊背景与 HABAHIRO 背景——按演奏中的舞台布局合成（bgImage 部件 1920×1440 UI 单位、中心 y = −170、舞台根缩放 0.92），特殊背景的舞台特效按演奏中的状态合成，并烘焙 DarkCover 的反向减法变暗。舞台灯光、音箱、荧光棒是动画，由引擎用皮肤包绘制。
 
 默认运行即生成全部条目，没有选择单个背景的参数。
 
 ## 条目
 
-每个背景 bundle 生成一个条目 `garupa-<bundle>`（普通背景 `liveBG_normal`；不生成 fever 背景，见「Fever 背景」），标题为原作名称（如「デフォルト背景」「ペルソナコラボ」「HABAHIRO」），共 23 个条目。名称来自原作各服主数据（`internal/master/skins.json` 的 `names`）：每种语言用对应服的名称——日文 JP、英文 EN、繁体中文 TW、简体中文 CN，该服没有时取 JP、EN、TW、CN 中第一个有的名称（例如 Roselia 的 lane：「Roselia Lane」「Roselia的軌跡」「Roselia的按键条皮肤」）；普通设置用各行的皮肤名（`TYPE1`、`レーンスキン00`、`エフェクトスキン00`、`SEスキン00`、`デフォルト背景` 等），Collaboration 行用季节描述（`MasterSeasonSpecial.description`，如 `ペルソナコラボ`），Limited 行用限定皮肤名（如 `エイプリルフール2019`）；同一组件出现在多行时取 Limited 行，其次取季节最早的行。特殊行替换的各轴是一个固定组合，条目名只写一次（该组合的第一个 bundle），标题只写一次（该行的名称）。条目的作者为 `GirlsBandParty`，副标题为游戏名。包中（`db.json`）的条目按原作主数据的顺序排列（即 `Items()` 的顺序）：先是普通设置，按各轴 master 行的顺序组合（默认组合在最前）；其后是特殊组合，按 Collaboration、Limited 的行号；HABAHIRO 在最后。sonolus-pack 按目录名列出条目，打包后再按这个顺序重排。
+每个背景 bundle 生成一个条目 `garupa-<bundle>`（普通背景 `liveBG_normal`；不生成 fever 背景，见「Fever 背景」），标题为原作名称（如「デフォルト背景」「ペルソナコラボ」「HABAHIRO」），共 27 个条目。名称来自原作各服主数据（`internal/master/skins.json` 的 `names`）：每种语言用对应服的名称——日文 JP、英文 EN、繁体中文 TW、简体中文 CN，该服没有时取 JP、EN、TW、CN 中第一个有的名称（例如 Roselia 的 lane：「Roselia Lane」「Roselia的軌跡」「Roselia的按键条皮肤」）；普通设置用各行的皮肤名（`TYPE1`、`レーンスキン00`、`エフェクトスキン00`、`SEスキン00`、`デフォルト背景` 等），Collaboration 行用季节描述（`MasterSeasonSpecial.description`，如 `ペルソナコラボ`），Limited 行用限定皮肤名（如 `エイプリルフール2019`）；同一组件出现在多行时取 Limited 行，其次取季节最早的行。特殊行替换的各轴是一个固定组合，条目名只写一次（该组合的第一个 bundle），标题只写一次（该行的名称）。条目的作者为 `GirlsBandParty`，副标题为游戏名。包中（`db.json`）的条目按原作主数据的顺序排列（即 `Items()` 的顺序）：先是普通设置，按各轴 master 行的顺序组合（默认组合在最前）；其后是特殊组合，按 Collaboration、Limited 的行号；HABAHIRO 在最后。sonolus-pack 按目录名列出条目，打包后再按这个顺序重排。
 
 | 来源 | bundle |
 |---|---|
 | 活动背景（主数据 MasterSkinBackground） | `skin00`、`skin02`、`skin03` |
-| 特殊背景（Collaboration / Limited 的背景组件） | `skin_persona`、`skin_miku`、`skin_cafe`、`skin_maid`、`skin_gbp2020`、`skin_coin`、`skin_witch`、`skin_april2021`、`skin_stage`、`skin_delta`、`skin_5th`、`skin_bike`、`skin_satan`、`skin_april2019`、`skin_collabo23_summer_g`、`skin_collabo23_winter_d`、`skin_april_2024`、`skin_collabo24_autumn_i`、`skin_collabo25_autumn_s` |
+| 特殊背景（Collaboration / Limited 的背景组件） | `skin_persona`、`skin_miku`、`skin_cafe`、`skin_maid`、`skin_gbp2020`、`skin_coin`、`skin_witch`、`skin_april2021`、`skin_stage`、`skin_delta`、`skin_5th`、`skin_bike`、`skin_satan`、`skin_april2019`、`skin_collabo23_summer_g`、`skin_collabo23_winter_d`、`skin_april_2024`、`skin_collabo24_autumn_i`、`skin_collabo25_autumn_s`、`skin_collabo_2026`（Limited 5），大陆服的 `skin10001`、`skin_bilicat`、`skin_bilicat01` |
 | HABAHIRO（原作对 `#HABAHIRO` live 强制使用，MV 与练习模式除外） | `habahiro`，`Result.Habahiro` 为 true |
 
 未生成的背景（理由同样记录在 `internal/master` 的 `Excluded` 中）：
@@ -21,9 +21,9 @@
 
 ## 合成
 
-- **底图**：`liveBG_normal.png` / `liveBG.png` 取自 Bestdori，按 `-regions` 的服务器优先级取第一个拥有该 bundle 的服务器。拉伸到 bgImage 部件，画布宽 1766.4 UI 单位（0.92 下的整个部件，引擎在通关退场动画中按舞台 TRS 缩放、移动它）、纵向从部件顶边 y = 506 到 y = −820（部件之上原本只是部件够不着的纯黑，生成时校验后裁掉，由背景色 `#000000` 代替；Preview 中 Sonolus 自己铺背景，否则在比 16:9 方的屏幕上会露出这段黑边），分辨率为纹理原生密度。`fit` 为 `cover`。
+- **底图**：`liveBG_normal.png` / `liveBG.png` 取自 Bestdori，按 `-regions` 的服务器优先级取第一个拥有该 bundle 的服务器；大陆服主数据行的 bundle 先在 cn 查找。拉伸到 bgImage 部件，画布宽 1766.4 UI 单位（0.92 下的整个部件，引擎在通关退场动画中按舞台 TRS 缩放、移动它）、纵向从部件顶边 y = 506 到 y = −820（部件之上原本只是部件够不着的纯黑，生成时校验后裁掉，由背景色 `#000000` 代替；Preview 中 Sonolus 自己铺背景，否则在比 16:9 方的屏幕上会露出这段黑边），分辨率为纹理原生密度。`fit` 为 `cover`。
 - **活动背景的分层纹理**：`skin02`、`skin03` 的 `liveBG_layer1/2` 只在挑战 Live 与对邦 Live 模式中使用（原作 BgManager 的对应模式初始化）；普通 live 只显示 `liveBG_normal`，所以不合成。
-- **舞台特效**：特殊背景 bundle 带有舞台特效 prefab（`stageEffect`，InGameStageBgEffector），原作把它放在舞台根上、与 bgImage 部件同一坐标系（顶边 y = 550）。程序从官方 CDN 的原始 UnityFS bundle 读取 prefab，渲染其演奏中的状态：
+- **舞台特效**：特殊背景 bundle 带有舞台特效 prefab（`stageEffect`，InGameStageBgEffector），原作把它放在舞台根上、与 bgImage 部件同一坐标系（顶边 y = 550）。程序从官方 CDN 的原始 UnityFS bundle 读取 prefab（JP 资源版本固定为 `internal/cdn` 的 `PinnedVersion`，`10.2.0.190_b3da1643…`；大陆服主数据行的 bundle 取自大陆服资源 CDN（`https://line3-prod-patch-bd.bilibiligame.net/assetbundle/<版本>/Android/<bundle>`，版本固定为 `internal/cdn` 的 `PinnedCNVersion`（`10.1.3.0`）），其余取自 JP），渲染其演奏中的状态：
   - Animator 的 StartAnimation / ClearAnimation 只在开场与通关播放，所有状态都写默认值（Write Defaults），并回到空的 None 状态；它们通过事件触发的补间在同一段动画中反向播放。因此演奏中显示的是 prefab 的序列化状态。
   - 渲染内容：激活的 UITexture，透明度沿 NGUI 的 UIRect 链相乘（部件颜色 alpha、面板 alpha、AnimatedAlpha、实例化时即启用的 TweenAlpha 的起始值）；面板裁剪（软裁剪，尺寸为 0 时全部裁掉）；`Unlit/Depth Cutout` 深度遮挡；`Unlit/Transparent Colored`（alpha 混合）与 `Mobile/Particles/Additive`（加色）在线性色彩空间中混合。绘制顺序按面板 render queue、面板深度、部件深度。舞台特效的 render queue（3100–3250）位于 bgImage 与 DarkCover（3490）之间，所以 DarkCover 也盖在舞台特效上。
   - 遇到无法静态表达的可见内容（不支持的部件类型、着色器、纹理格式，屏幕平面外的旋转，实例化即启用的位移/旋转/缩放补间）时报错，不会静默丢弃。
@@ -82,8 +82,8 @@ sonolus-notgarupa-background-generator    # 全部条目 → out/source 与 out/
 | `-out` | `out` | 输出目录：`<out>/source`（重新生成的 sonolus-pack 源目录）与 `<out>/pack`（可直接被服务器加载） |
 | `-cache` | `.cache` | 下载缓存目录 |
 | `-offline` | false | 只使用缓存中的下载 |
-| `-regions` | `jp,en,tw,cn,kr` | Bestdori 服务器优先级。各服有独占素材，每个 bundle 取自第一个拥有它的服务器（该 bundle 的全部文件都来自同一服）；某服没有时记录在缓存中，`-offline` 重跑时选择相同的服务器 |
-| `-asset-version` | 固定版本 | 读取舞台特效 prefab 的官方 CDN 资源版本 |
+| `-regions` | `jp,en,tw,cn,kr` | Bestdori 服务器优先级。各服有独占素材，每个 bundle 取自第一个拥有它的服务器（该 bundle 的全部文件都来自同一服；大陆服主数据行的 bundle 先查 cn）；某服没有时记录在缓存中，`-offline` 重跑时选择相同的服务器 |
+| `-asset-version` | 固定版本 | 读取舞台特效 prefab 的 JP 官方 CDN 资源版本（大陆服 bundle 的版本固定） |
 | `-j` | CPU 数 | 并行生成的背景数 |
 | `-v` | false | 输出下载日志 |
 | `-version` | false | 输出版本号后退出 |

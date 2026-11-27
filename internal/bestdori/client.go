@@ -3,7 +3,8 @@
 //
 // Servers have exclusive assets, so a bundle is looked up on every server in
 // priority order (Regions) and taken from the first one that has it; all
-// files of a bundle then come from that server.
+// files of a bundle then come from that server. A bundle of a master row
+// from another server (Servers) is looked up on that server first.
 package bestdori
 
 import (
@@ -37,7 +38,11 @@ var ErrNotFound = errors.New("not found")
 type Client struct {
 	Root string
 	// Regions is the server priority order (nil: DefaultRegions).
-	Regions  []string
+	Regions []string
+	// Servers maps bundles to the server they are looked up on first (the
+	// server of the master row that uses them); the others follow in
+	// Regions order.
+	Servers  map[string]string
 	CacheDir string
 	// Offline makes every request fail unless it is already cached.
 	Offline bool
@@ -71,6 +76,22 @@ func (c *Client) regions() []string {
 	return c.Regions
 }
 
+// regionsFor is the lookup order of a bundle: its master row's server, then
+// the priority order.
+func (c *Client) regionsFor(bundle string) []string {
+	first, ok := c.Servers[bundle]
+	if !ok {
+		return c.regions()
+	}
+	out := []string{first}
+	for _, r := range c.regions() {
+		if r != first {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // Manifest returns the file list of a bundle, e.g. "ingameskin/noteskin/skin00",
 // from the first server in priority order that has it.
 func (c *Client) Manifest(bundle string) ([]string, error) {
@@ -91,7 +112,7 @@ func (c *Client) manifest(bundle string) (manifest, error) {
 	if ok {
 		return m, nil
 	}
-	for _, region := range c.regions() {
+	for _, region := range c.regionsFor(bundle) {
 		u := fmt.Sprintf("%s/api/explorer/%s/assets/%s.json", c.Root, region, bundle)
 		data, err := c.get(u, filepath.Join("manifest", region, bundle+".json"))
 		if errors.Is(err, ErrNotFound) {
@@ -112,7 +133,7 @@ func (c *Client) manifest(bundle string) (manifest, error) {
 		c.mu.Unlock()
 		return m, nil
 	}
-	return manifest{}, fmt.Errorf("bestdori bundle %s is on none of the servers %v: %w", bundle, c.regions(), ErrNotFound)
+	return manifest{}, fmt.Errorf("bestdori bundle %s is on none of the servers %v: %w", bundle, c.regionsFor(bundle), ErrNotFound)
 }
 
 // File returns one ripped file of a bundle, from the server the bundle is
